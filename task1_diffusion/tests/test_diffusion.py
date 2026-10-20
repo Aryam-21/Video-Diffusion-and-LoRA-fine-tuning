@@ -65,6 +65,16 @@ def test_can_overfit_one_batch():
     assert plain.item() < first, "loss should go down when training on a single batch"
 
 
+def test_schedule_coefficients_are_finite_for_small_and_large_T():
+    """Regression test: the linear schedule used to give alpha_bar = 0 (-> inf/NaN) for T <= 20."""
+    for name in ("linear", "cosine"):
+        for T in (10, 20, 50, 200, 1000):
+            s = NoiseSchedule(name, T)
+            assert (s.alpha_bar > 0).all() and (s.betas <= 0.999 + 1e-6).all(), (name, T)
+            for k in s._TENSORS:
+                assert torch.isfinite(getattr(s, k)).all(), (name, T, k)
+
+
 def test_samplers_run_and_are_finite():
     net = build_unet("video", 3, base=16, mults=(1, 2)).eval()
     d = GaussianDiffusion(NoiseSchedule("linear", 20), 3)

@@ -16,7 +16,10 @@ import torch
 def linear_betas(T: int, beta_start: float = 1e-4, beta_end: float = 0.02) -> torch.Tensor:
     """Original DDPM schedule. It is defined for T=1000, so we rescale it for other T."""
     scale = 1000 / T
-    return torch.linspace(beta_start * scale, beta_end * scale, T, dtype=torch.float64)
+    betas = torch.linspace(beta_start * scale, beta_end * scale, T, dtype=torch.float64)
+    # FIX: for T <= 20 the rescaled beta reaches 1.0 (T=20) or more (T<20): alpha_bar becomes 0 / negative and
+    # sqrt(1/alpha_bar) = inf -> NaN samples. Clip like the cosine schedule does (no effect for T >= 30, incl. T=200/1000).
+    return betas.clamp(max=0.999)
 
 
 def cosine_betas(T: int, s: float = 0.008, max_beta: float = 0.999) -> torch.Tensor:
