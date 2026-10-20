@@ -1,0 +1,6 @@
+data/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+# keep best.pt / last.pt (needed for the submission), drop the per-epoch LoRA files (hundreds of MB)
+runs/lora/*/checkpoints/epoch_*.pt

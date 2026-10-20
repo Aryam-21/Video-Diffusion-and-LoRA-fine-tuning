@@ -1,0 +1,14 @@
+torch>=2.1
+torchvision>=0.16
+numpy
+scipy
+matplotlib
+pillow
+pytest
+# Task 2 (CUDA GPU, e.g. free Colab / Kaggle T4)
+diffusers>=0.27
+transformers>=4.40
+accelerate
+safetensors
+imageio
+imageio-ffmpeg
