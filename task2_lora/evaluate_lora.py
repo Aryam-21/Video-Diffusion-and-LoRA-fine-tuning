@@ -48,8 +48,11 @@ class ClipScorer:
     def __call__(self, frames, prompt):
         px = self.proc(images=list(frames), return_tensors="pt")["pixel_values"].to(self.device, torch.float16)
         tx = self.proc.tokenizer([prompt], padding=True, truncation=True, return_tensors="pt").to(self.device)
-        img = F.normalize(self.model.get_image_features(pixel_values=px).float(), dim=-1)
-        txt = F.normalize(self.model.get_text_features(**tx).float(), dim=-1)
+        # Use the model's normal forward pass: its CLIPOutput always has `image_embeds` / `text_embeds`. (Newer transformers versions
+        # changed get_image_features()/get_text_features() to return a ModelOutput instead of a tensor, which crashed `.float()`.)
+        out = self.model(input_ids=tx["input_ids"], attention_mask=tx["attention_mask"], pixel_values=px)
+        img = F.normalize(out.image_embeds.float(), dim=-1)
+        txt = F.normalize(out.text_embeds.float(), dim=-1)
         return dict(clip_text=(img @ txt.T).mean().item(), clip_temp=(img[1:] * img[:-1]).sum(-1).mean().item())
 
 
