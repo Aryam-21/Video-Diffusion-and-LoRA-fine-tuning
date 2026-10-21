@@ -101,3 +101,21 @@ def load_lora_state_dict(model: nn.Module, state: dict) -> None:
     for key, v in state.items():
         name, k = key.rsplit(".", 1)
         getattr(mods[name], k).data.copy_(v.to(getattr(mods[name], k).device))
+
+
+def checkpoint_blocks(blocks):
+    """Our own gradient checkpointing, one checkpoint per block (used when the library model has no built-in support,
+    e.g. diffusers' UNet3DConditionModel). Activations inside a block are NOT stored in the forward pass and are recomputed
+    during backward: ~30% more compute for a large cut in activation memory. Only active in train mode with grad enabled."""
+    from torch.utils.checkpoint import checkpoint
+    for b in blocks:
+        if b is None or getattr(b, "_ckpt_wrapped", False):
+            continue
+        orig = b.forward
+
+        def fwd(*a, _orig=orig, _b=b, **k):
+            if _b.training and torch.is_grad_enabled():
+                return checkpoint(_orig, *a, use_reentrant=False, **k)
+            return _orig(*a, **k)
+
+        b.forward, b._ckpt_wrapped = fwd, True

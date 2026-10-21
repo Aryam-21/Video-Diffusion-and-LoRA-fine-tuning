@@ -28,7 +28,7 @@ from torch.utils.data import DataLoader
 from common.plotting import plot_training_curves
 from common.utils import (CSVLogger, count_params, get_device, peak_memory_mb, reset_peak_memory, save_json,
                           seed_everything)
-from task2_lora.lora import ATTN_TARGETS, FF_TARGETS, inject_lora, lora_parameters, lora_state_dict
+from task2_lora.lora import checkpoint_blocks, ATTN_TARGETS, FF_TARGETS, inject_lora, lora_parameters, lora_state_dict
 from task2_lora.pipeline_utils import generate_frames, load_pipeline, save_gif
 from task2_lora.video_data import LatentDataset, build_latent_cache, encode_text, read_metadata
 
@@ -124,7 +124,12 @@ def main(argv=None):
     print(f"[lora] {len(replaced)} layers adapted | trainable {n_train / 1e6:.2f}M / {n_total / 1e6:.0f}M "
           f"({100 * n_train / n_total:.2f}%) | r={args.rank} alpha={alpha}")
     if not args.no_grad_ckpt:
-        unet.enable_gradient_checkpointing()
+        try:
+            unet.enable_gradient_checkpointing()
+            print("[memory] gradient checkpointing: diffusers built-in")
+        except ValueError:      # UNet3DConditionModel does not support it -> our own per-block version (lora.checkpoint_blocks)
+            checkpoint_blocks([*unet.down_blocks, unet.mid_block, *unet.up_blocks])
+            print("[memory] gradient checkpointing: own per-block implementation (built-in unsupported by UNet3D)")
     unet.train()
 
     opt = torch.optim.AdamW(params, lr=args.lr, weight_decay=args.weight_decay)

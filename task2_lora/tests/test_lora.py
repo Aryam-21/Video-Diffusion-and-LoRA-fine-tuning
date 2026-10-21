@@ -8,7 +8,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from task2_lora.lora import (LoRALinear, inject_lora, load_lora_state_dict, lora_modules, lora_parameters,
+from task2_lora.lora import (checkpoint_blocks, LoRALinear, inject_lora, load_lora_state_dict, lora_modules, lora_parameters,
                              lora_state_dict, merge_lora, set_lora_scale)
 
 
@@ -124,3 +124,34 @@ def test_lora_can_fit_a_target_and_param_count_formula():
 def test_inject_raises_when_nothing_matches():
     with pytest.raises(RuntimeError):
         inject_lora(nn.Sequential(nn.Linear(4, 4)), targets=("to_q",))
+
+
+def test_own_gradient_checkpointing_gives_identical_gradients():
+    """Per-block checkpointing must only change memory, never the result (also with keyword arguments, like UNet blocks use)."""
+    class Blk(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.attn = Attn()
+
+        def forward(self, x, scale=1.0):
+            return torch.relu(self.attn(x)) * scale
+
+    torch.manual_seed(0)
+    plain = nn.ModuleList([Blk(), Blk()])
+    ckpt = copy.deepcopy(plain)
+    for m in (plain, ckpt):
+        inject_lora(m, r=4, alpha=4)
+    ckpt.load_state_dict(plain.state_dict())
+    for m in lora_modules(plain):
+        nn.init.normal_(m.B, std=0.1)
+    ckpt.load_state_dict(plain.state_dict())
+    checkpoint_blocks(list(ckpt))
+    x = torch.randn(6, 8)
+    for m in (plain, ckpt):
+        m.train()
+        h = x
+        for blk in m:
+            h = blk(h, scale=1.5)
+        h.square().mean().backward()
+    for a, b in zip(lora_parameters(plain), lora_parameters(ckpt)):
+        assert torch.allclose(a.grad, b.grad, atol=1e-6)
